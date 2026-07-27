@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8">
+<title>Dot Sphere Generator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root{
+    --bg: #161616;
+    --panel: #1f1f1f;
+    --panel-border: #2c2c2c;
+    --text: #e8e6e1;
+    --muted: #8f8b83;
+    --accent: #d97757;
+    --track: #333;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; height:100%;
+    background:var(--bg); color:var(--text);
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  #app{
+    display:flex; height:100vh; width:100vw;
+  }
+  #stage-wrap{
+    flex:1;
+    display:flex; align-items:center; justify-content:center;
+    position:relative;
+    background:
+      linear-gradient(45deg, #2a2a2a 25%, transparent 25%) -10px 0/20px 20px,
+      linear-gradient(-45deg, #2a2a2a 25%, transparent 25%) -10px 0/20px 20px,
+      linear-gradient(45deg, transparent 75%, #2a2a2a 75%) -10px 0/20px 20px,
+      linear-gradient(-45deg, transparent 75%, #2a2a2a 75%) -10px 0/20px 20px,
+      #1c1c1c;
+    background-size: 20px 20px;
+    overflow:hidden;
+  }
+  canvas{
+    display:block;
+  }
+  #panel{
+    width:340px;
+    background:var(--panel);
+    border-left:1px solid var(--panel-border);
+    padding:20px;
+    overflow-y:auto;
+  }
+  #panel h1{
+    font-size:15px; margin:0 0 4px 0; letter-spacing:0.3px;
+  }
+  #panel .sub{
+    font-size:11px; color:var(--muted); margin-bottom:20px;
+  }
+  .group{
+    margin-bottom:18px;
+    padding-bottom:16px;
+    border-bottom:1px solid var(--panel-border);
+  }
+  .group:last-of-type{ border-bottom:none; }
+  .group h2{
+    font-size:11px; text-transform:uppercase; letter-spacing:0.8px;
+    color:var(--muted); margin:0 0 10px 0; font-weight:600;
+  }
+  .group h3{
+    font-size:10.5px; text-transform:uppercase; letter-spacing:0.6px;
+    color:#6f6b64; margin:12px 0 8px 0; font-weight:600;
+  }
+  .row{
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:10px; gap:8px;
+  }
+  .row label{
+    font-size:12.5px; color:var(--text); flex:1;
+  }
+  input[type=range]{
+    flex:1.6; accent-color:var(--accent); height:4px;
+  }
+  input[type=color]{
+    width:36px; height:22px; border:none; background:none; padding:0; cursor:pointer;
+  }
+  input[type=number]{
+    width:56px; background:#111; border:1px solid var(--panel-border);
+    color:var(--text); border-radius:4px; padding:4px 5px; font-size:11.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  input.val-input{
+    width:52px; flex:none;
+  }
+  select{
+    background:#111; color:var(--text); border:1px solid var(--panel-border);
+    border-radius:4px; padding:4px 6px; font-size:12px;
+  }
+  button{
+    width:100%;
+    background:#2a2a2a; color:var(--text); border:1px solid var(--panel-border);
+    padding:9px 10px; border-radius:6px; font-size:12.5px; cursor:pointer;
+    margin-bottom:8px; transition:background 0.15s;
+  }
+  button:hover{ background:#333; }
+  button.primary{
+    background:var(--accent); border-color:var(--accent); color:#1a1109; font-weight:600;
+  }
+  button.primary:hover{ background:#e08865; }
+  button:disabled{ opacity:0.5; cursor:not-allowed; }
+  #status{
+    font-size:11px; color:var(--muted); min-height:14px; margin-top:4px;
+  }
+  #progressWrap{
+    height:4px; background:#333; border-radius:2px; margin-top:8px; overflow:hidden; display:none;
+  }
+  #progressBar{
+    height:100%; width:0%; background:var(--accent);
+  }
+  .toggleRow{
+    display:flex; align-items:center; gap:8px; margin-bottom:10px;
+  }
+  .toggleRow input{ accent-color:var(--accent); }
+  .toggleRow label{ font-size:12.5px; }
+  .hint{
+    font-size:10.5px; color:var(--muted); line-height:1.4; margin-top:2px;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage-wrap">
+    <canvas id="stage" width="800" height="800"></canvas>
+  </div>
+
+  <div id="panel">
+    <h1>Dot Sphere</h1>
+    <div class="sub">Generator tackaste sfere &middot; loop &amp; export</div>
+
+    <div class="group">
+      <h2>Grid</h2>
+      <div class="row"><label>Prstenovi (rings)</label><input id="rings" type="range" min="10" max="90" value="46"><input class="val-input" id="rings_num" type="number" min="10" max="90" value="46"></div>
+      <div class="row"><label>Segmenti (kolone)</label><input id="segs" type="range" min="10" max="90" value="46"><input class="val-input" id="segs_num" type="number" min="10" max="90" value="46"></div>
+      <div class="row"><label>Velicina tacke</label><input id="dotSize" type="range" min="0.5" max="8" step="0.1" value="3.4"><input class="val-input" id="dotSize_num" type="number" min="0.5" max="8" step="0.1" value="3.4"></div>
+      <div class="row"><label>Boja tacki</label><input id="dotColor" type="color" value="#1a1a1a"></div>
+      <div class="row"><label>Zadnja strana (providnost)</label><input id="backOpacity" type="range" min="0" max="1" step="0.01" value="0.15"><input class="val-input" id="backOpacity_num" type="number" min="0" max="1" step="0.01" value="0.15"></div>
+      <div class="hint">Prikazuje sitne, skoro providne tackice sa druge strane sfere koje se naziru kroz prednju stranu (kao na referenci). Postavi na 0 da ih sakrijes potpuno.</div>
+    </div>
+
+    <div class="group">
+      <h2>Pozadina</h2>
+      <div class="toggleRow"><input id="bgTransparent" type="checkbox" checked><label for="bgTransparent">Providna pozadina (za export)</label></div>
+      <div class="row"><label>Boja pozadine</label><input id="bgColor" type="color" value="#101010"></div>
+      <div class="hint">Kad je "providna pozadina" cekirano, boja pozadine se koristi samo kao pregled u editoru, a export ostaje transparentan. Ako je iskljucis, boja se peca direktno u canvas i u export.</div>
+    </div>
+
+    <div class="group">
+      <h2>Swirl (spiralni twist)</h2>
+      <div class="row"><label>Twist (pol-do-pol) &deg;</label><input id="twist" type="range" min="-720" max="720" value="260"><input class="val-input" id="twist_num" type="number" min="-720" max="720" value="260"></div>
+      <div class="row"><label>Swirl drift &deg;/s</label><input id="swirlDrift" type="range" min="-180" max="180" value="0"><input class="val-input" id="swirlDrift_num" type="number" min="-180" max="180" value="0"></div>
+      <div class="hint">Twist uvija grid u spiralu (kao na referenci) — kruto se rotira sa sferom, ne kvari loop. Swirl drift dodaje nezavisno "curenje" spirale kroz vreme — vizuelno jako, ali za savrsen loop najbolje ostavi na 0 ili rucno podesi trajanje.</div>
+    </div>
+
+    <div class="group">
+      <h2>Twirl (2D uvijanje, levo gore / desno dole)</h2>
+      <div class="row"><label>Twirl ugao (na ivici) &deg;</label><input id="twirlAngle" type="range" min="-360" max="360" value="130"><input class="val-input" id="twirlAngle_num" type="number" min="-720" max="720" value="130"></div>
+      <div class="row"><label>Twirl animacija &deg;/s</label><input id="twirlSpeed" type="range" min="-180" max="180" value="0"><input class="val-input" id="twirlSpeed_num" type="number" min="-360" max="360" value="0"></div>
+      <div class="hint">Ovo je efekat kao Photoshop Twirl filter: rotira tackice u 2D prostoru oko centra, vise na ivici nego u centru — zbog toga jedan red na levoj strani ide gore, a na desnoj dole (spiralno uvijanje celog kadra). Radi zajedno sa Twist-om iznad, ali je nezavisan efekat. Twirl animacija, kao i Swirl drift, moze narusiti savrsen loop ako nije 0.</div>
+    </div>
+
+    <div class="group">
+      <h2>Rotacija celog objekta</h2>
+      <h3>Poc. orijentacija (staticno)</h3>
+      <div class="row"><label>Rotacija X &deg;</label><input id="baseRotX" type="range" min="-180" max="180" value="12"><input class="val-input" id="baseRotX_num" type="number" min="-360" max="360" value="12"></div>
+      <div class="row"><label>Rotacija Y &deg;</label><input id="baseRotY" type="range" min="-180" max="180" value="0"><input class="val-input" id="baseRotY_num" type="number" min="-360" max="360" value="0"></div>
+      <div class="row"><label>Rotacija Z (roll) &deg;</label><input id="baseRotZ" type="range" min="-180" max="180" value="0"><input class="val-input" id="baseRotZ_num" type="number" min="-360" max="360" value="0"></div>
+      <h3>Animacija (brzina)</h3>
+      <div class="row"><label>Spin (Y osa) &deg;/s</label><input id="rotY" type="range" min="-180" max="180" value="40"><input class="val-input" id="rotY_num" type="number" min="-720" max="720" value="40"></div>
+      <div class="row"><label>Tilt drift (X osa) &deg;/s</label><input id="rotX" type="range" min="-90" max="90" value="0"><input class="val-input" id="rotX_num" type="number" min="-360" max="360" value="0"></div>
+      <div class="row"><label>Roll drift (Z osa) &deg;/s</label><input id="rotZ" type="range" min="-90" max="90" value="0"><input class="val-input" id="rotZ_num" type="number" min="-360" max="360" value="0"></div>
+    </div>
+
+    <div class="group">
+      <h2>Kretanje tacaka</h2>
+      <div class="row"><label>Wobble amplituda</label><input id="wobbleAmp" type="range" min="0" max="0.3" step="0.005" value="0"><input class="val-input" id="wobbleAmp_num" type="number" min="0" max="1" step="0.005" value="0"></div>
+      <div class="row"><label>Wobble brzina</label><input id="wobbleSpeed" type="range" min="0" max="5" step="0.05" value="1"><input class="val-input" id="wobbleSpeed_num" type="number" min="0" max="20" step="0.05" value="1"></div>
+      <div class="hint">Wobble dodaje sitno "disanje" tackica po povrsini (per-dot noise), nezavisno od rotacije.</div>
+    </div>
+
+    <div class="group">
+      <h2>Keyframes &amp; Bezier animacija</h2>
+      <div class="row"><label>Parametar</label>
+        <select id="kfProp" style="flex:1.6">
+          <option value="baseRotX">Rotacija X (&deg;)</option>
+          <option value="baseRotY">Rotacija Y (&deg;)</option>
+          <option value="baseRotZ">Rotacija Z / roll (&deg;)</option>
+          <option value="twist">Twist (&deg;)</option>
+          <option value="twirlAngle">Twirl ugao (&deg;)</option>
+          <option value="wobbleAmp">Wobble amplituda</option>
+          <option value="dotSize">Velicina tacke</option>
+          <option value="backOpacity">Zadnja strana providnost</option>
+        </select>
+      </div>
+      <div class="row"><label>Vreme (s)</label><input id="kfTime" type="number" step="0.1" value="0" style="flex:1"></div>
+      <div class="row"><label>Vrednost</label><input id="kfValue" type="number" step="0.1" value="0" style="flex:1"></div>
+      <button id="kfGrabBtn">Uzmi trenutno vreme / vrednost</button>
+      <button id="kfAddBtn" class="primary">Dodaj / azuriraj keyframe</button>
+      <div id="kfList" style="margin-top:6px; margin-bottom:8px;"></div>
+      <button id="kfClearBtn">Obrisi sve keyframe-ove za ovaj parametar</button>
+      <div class="hint">Kad parametar ima bar 1 keyframe, njegov slajder iznad se ignorise tokom animacije (vrednost dolazi iz keyframe-ova). Pre prvog i posle poslednjeg keyframe-a vrednost se drzi fiksno.</div>
+
+      <h3>Bezier easing (izmedju keyframe-ova)</h3>
+      <div class="row"><label>Segment</label>
+        <select id="kfSegment" style="flex:1.6"><option value="">— nema segmenata —</option></select>
+      </div>
+      <svg id="bezierSvg" viewBox="0 0 160 160" width="160" height="160" style="display:block; margin:0 auto 8px; background:#141414; border:1px solid var(--panel-border); border-radius:6px; touch-action:none;"></svg>
+      <div class="row"><label style="flex:none; width:20px;">P1</label>
+        <input class="val-input" id="p1x" type="number" step="0.01" value="0.42" style="width:44px;">
+        <input class="val-input" id="p1y" type="number" step="0.01" value="0" style="width:44px;">
+      </div>
+      <div class="row"><label style="flex:none; width:20px;">P2</label>
+        <input class="val-input" id="p2x" type="number" step="0.01" value="0.58" style="width:44px;">
+        <input class="val-input" id="p2y" type="number" step="0.01" value="1" style="width:44px;">
+      </div>
+      <div class="row" style="gap:4px;">
+        <button id="presetLinear" style="margin-bottom:0;">Linear</button>
+        <button id="presetEase" style="margin-bottom:0;">Ease</button>
+        <button id="presetInOut" style="margin-bottom:0;">In-Out</button>
+        <button id="presetBack" style="margin-bottom:0;">Overshoot</button>
+      </div>
+      <div class="hint">Prevuci tacke na grafu ili unesi tacne vrednosti. Vazi za segment izmedju dva izabrana keyframe-a (kao Graph Editor u After Effects).</div>
+    </div>
+
+    <div class="group">
+      <h2>Playback &amp; Loop</h2>
+      <div class="row"><label>Trajanje loop-a (s)</label><input id="loopDur" type="number" min="0.5" step="0.1" value="9"></div>
+      <div class="row"><label>FPS</label><input id="fps" type="number" min="12" max="60" value="30"></div>
+      <button id="autoLoopBtn">Auto: 1 pun obrtaj = loop</button>
+      <button id="playBtn">Pauziraj</button>
+      <button id="resetBtn">Restartuj vreme</button>
+    </div>
+
+    <div class="group">
+      <h2>Export</h2>
+      <button id="exportPngBtn" class="primary">Export PNG sekvenca (ZIP, alpha)</button>
+      <div class="hint">Najpouzdanije za After Effects — uvezi ZIP kao image sequence, alpha kanal je ocuvan.</div>
+      <button id="exportWebmBtn">Export WebM (transparent, Chrome)</button>
+      <div class="hint">Radi pouzdano samo u Chrome/Edge desktop. Otvori WebM u playeru koji podrzava alpha (npr. AE/Premiere) da proveris providnost.</div>
+      <div id="progressWrap"><div id="progressBar"></div></div>
+      <div id="status"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d', { alpha: true });
+
+const SIZE = 800;
+canvas.width = SIZE;
+canvas.height = SIZE;
+
+// ---- controls ----
+const el = id => document.getElementById(id);
+
+const ringsEl = el('rings'), segsEl = el('segs'), dotSizeEl = el('dotSize'), dotColorEl = el('dotColor');
+const bgTransparentEl = el('bgTransparent'), bgColorEl = el('bgColor');
+const twistEl = el('twist'), swirlDriftEl = el('swirlDrift');
+const baseRotXEl = el('baseRotX'), baseRotYEl = el('baseRotY'), baseRotZEl = el('baseRotZ');
+const rotYEl = el('rotY'), rotXEl = el('rotX'), rotZEl = el('rotZ');
+const wobbleAmpEl = el('wobbleAmp'), wobbleSpeedEl = el('wobbleSpeed');
+const loopDurEl = el('loopDur'), fpsEl = el('fps');
+
+// generic two-way sync between a range slider and its numeric field
+function pairSync(id, onChange){
+  const range = el(id);
+  const num = el(id + '_num');
+  range.addEventListener('input', () => {
+    num.value = range.value;
+    if(onChange) onChange();
+  });
+  num.addEventListener('input', () => {
+    let v = parseFloat(num.value);
+    if(isNaN(v)) return;
+    const min = parseFloat(range.min), max = parseFloat(range.max);
+    // allow typed values to exceed the slider's visual range without clamping the field itself,
+    // but clamp what actually drives the slider handle
+    range.value = Math.min(Math.max(v, min), max);
+    if(onChange) onChange();
+  });
+}
+
+['rings','segs','dotSize','backOpacity','twist','swirlDrift','twirlAngle','twirlSpeed','baseRotX','baseRotY','baseRotZ','rotY','rotX','rotZ','wobbleAmp','wobbleSpeed'].forEach(id => pairSync(id));
+
+pairSync('rings', buildDotsDeferred);
+pairSync('segs', buildDotsDeferred);
+
+function buildDotsDeferred(){
+  clearTimeout(window.__buildTimer);
+  window.__buildTimer = setTimeout(buildDots, 120);
+}
+
+let dots = []; // {theta, phi, ringNorm, phase, jitter}
+
+function buildDots(){
+  const rings = Math.max(2, parseInt(el('rings_num').value));
+  const segs = Math.max(3, parseInt(el('segs_num').value));
+  dots = [];
+  for(let i=0;i<rings;i++){
+    const theta = -Math.PI/2 + Math.PI * i/(rings-1); // -90..90
+    const ringNorm = i/(rings-1) - 0.5; // -0.5..0.5, pole to pole
+    for(let j=0;j<segs;j++){
+      const phi = (2*Math.PI*j)/segs;
+      dots.push({ theta, phi, ringNorm, phase: Math.random()*Math.PI*2, jitter: 0.85 + Math.random()*0.3 });
+    }
+  }
+}
+buildDots();
+
+// ---- keyframes & bezier easing ----
+const KF_PROPS = ['baseRotX','baseRotY','baseRotZ','twist','twirlAngle','wobbleAmp','dotSize','backOpacity'];
+let keyframes = {}; // propId -> [{t, v, easeOut:[x,y], easeIn:[x,y]}]
+KF_PROPS.forEach(p => keyframes[p] = []);
+
+function defaultEase(){ return { easeOut:[0.42,0], easeIn:[0.58,1] }; }
+
+function bezierEase(x1,y1,x2,y2,x){
+  // solve for parametric t where bx(t) = x, then return by(t). Assumes x monotonic over [0,1].
+  function bx(t){ const mt=1-t; return 3*mt*mt*t*x1 + 3*mt*t*t*x2 + t*t*t; }
+  function by(t){ const mt=1-t; return 3*mt*mt*t*y1 + 3*mt*t*t*y2 + t*t*t; }
+  let lo=0, hi=1, mid=0.5;
+  for(let i=0;i<24;i++){
+    mid=(lo+hi)/2;
+    if(bx(mid) < x) lo=mid; else hi=mid;
+  }
+  return by(mid);
+}
+
+function getParamValue(propId, t){
+  const kfs = keyframes[propId];
+  const fallback = () => parseFloat(el(propId+'_num').value);
+  if(!kfs || kfs.length === 0) return fallback();
+  if(kfs.length === 1) return kfs[0].v;
+  if(t <= kfs[0].t) return kfs[0].v;
+  const last = kfs[kfs.length-1];
+  if(t >= last.t) return last.v;
+  for(let i=0;i<kfs.length-1;i++){
+    const A = kfs[i], B = kfs[i+1];
+    if(t >= A.t && t <= B.t){
+      const span = (B.t - A.t) || 1e-6;
+      const u = (t - A.t) / span;
+      const eu = bezierEase(A.easeOut[0], A.easeOut[1], B.easeIn[0], B.easeIn[1], u);
+      return A.v + (B.v - A.v) * eu;
+    }
+  }
+  return last.v;
+}
+
+function sortKfs(propId){
+  keyframes[propId].sort((a,b)=>a.t-b.t);
+}
+
+// ---- keyframe panel UI ----
+const kfPropEl = el('kfProp'), kfTimeEl = el('kfTime'), kfValueEl = el('kfValue');
+const kfListEl = el('kfList'), kfSegmentEl = el('kfSegment');
+let selectedSegment = null; // {propId, aIndex}
+
+function currentT(){
+  return getElapsed(performance.now()) + manualTimeOffset;
+}
+
+el('kfGrabBtn').addEventListener('click', ()=>{
+  const propId = kfPropEl.value;
+  const t = currentT();
+  kfTimeEl.value = t.toFixed(2);
+  kfValueEl.value = getParamValue(propId, t).toFixed(3);
+});
+
+el('kfAddBtn').addEventListener('click', ()=>{
+  const propId = kfPropEl.value;
+  const t = parseFloat(kfTimeEl.value);
+  const v = parseFloat(kfValueEl.value);
+  if(isNaN(t) || isNaN(v)){ setStatus('Unesi validno vreme i vrednost.'); return; }
+  const kfs = keyframes[propId];
+  const existing = kfs.find(k => Math.abs(k.t - t) < 0.001);
+  if(existing){
+    existing.v = v;
+  } else {
+    kfs.push({ t, v, ...defaultEase() });
+  }
+  sortKfs(propId);
+  renderKfList();
+  setStatus('Keyframe postavljen na t=' + t.toFixed(2) + 's za "' + kfPropEl.options[kfPropEl.selectedIndex].text + '".');
+});
+
+el('kfClearBtn').addEventListener('click', ()=>{
+  const propId = kfPropEl.value;
+  keyframes[propId] = [];
+  renderKfList();
+  setStatus('Keyframe-ovi obrisani za "' + kfPropEl.options[kfPropEl.selectedIndex].text + '".');
+});
+
+kfPropEl.addEventListener('change', renderKfList);
+
+function renderKfList(){
+  const propId = kfPropEl.value;
+  const kfs = keyframes[propId];
+  kfListEl.innerHTML = '';
+  kfs.forEach((k, idx) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:6px; padding:4px 6px; font-size:11px; background:#181818; border:1px solid var(--panel-border); border-radius:4px; margin-bottom:4px;';
+    const label = document.createElement('span');
+    label.textContent = 't=' + k.t.toFixed(2) + 's  v=' + (Math.round(k.v*1000)/1000);
+    label.style.cursor = 'pointer';
+    label.addEventListener('click', ()=>{
+      kfTimeEl.value = k.t;
+      kfValueEl.value = k.v;
+    });
+    const del = document.createElement('button');
+    del.textContent = '×';
+    del.style.cssText = 'width:20px; margin:0; padding:0 0 2px 0; line-height:1;';
+    del.addEventListener('click', ()=>{
+      kfs.splice(idx,1);
+      renderKfList();
+    });
+    row.appendChild(label);
+    row.appendChild(del);
+    kfListEl.appendChild(row);
+  });
+  renderSegmentDropdown();
+}
+
+function renderSegmentDropdown(){
+  const propId = kfPropEl.value;
+  const kfs = keyframes[propId];
+  kfSegmentEl.innerHTML = '';
+  if(kfs.length < 2){
+    const opt = document.createElement('option');
+    opt.value = ''; opt.textContent = '— treba bar 2 keyframe-a —';
+    kfSegmentEl.appendChild(opt);
+    selectedSegment = null;
+    drawBezierGraph();
+    return;
+  }
+  for(let i=0;i<kfs.length-1;i++){
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = 'KF ' + kfs[i].t.toFixed(2) + 's → ' + kfs[i+1].t.toFixed(2) + 's';
+    kfSegmentEl.appendChild(opt);
+  }
+  selectedSegment = { propId, aIndex: 0 };
+  kfSegmentEl.value = 0;
+  loadSegmentIntoGraph();
+}
+
+kfSegmentEl.addEventListener('change', ()=>{
+  const propId = kfPropEl.value;
+  const idx = parseInt(kfSegmentEl.value);
+  if(isNaN(idx)){ selectedSegment = null; drawBezierGraph(); return; }
+  selectedSegment = { propId, aIndex: idx };
+  loadSegmentIntoGraph();
+});
+
+function loadSegmentIntoGraph(){
+  if(!selectedSegment){ drawBezierGraph(); return; }
+  const kfs = keyframes[selectedSegment.propId];
+  const A = kfs[selectedSegment.aIndex], B = kfs[selectedSegment.aIndex+1];
+  el('p1x').value = A.easeOut[0]; el('p1y').value = A.easeOut[1];
+  el('p2x').value = B.easeIn[0]; el('p2y').value = B.easeIn[1];
+  drawBezierGraph();
+}
+
+function applyGraphFields(){
+  if(!selectedSegment) return;
+  const kfs = keyframes[selectedSegment.propId];
+  const A = kfs[selectedSegment.aIndex], B = kfs[selectedSegment.aIndex+1];
+  A.easeOut = [parseFloat(el('p1x').value), parseFloat(el('p1y').value)];
+  B.easeIn = [parseFloat(el('p2x').value), parseFloat(el('p2y').value)];
+  drawBezierGraph();
+}
+['p1x','p1y','p2x','p2y'].forEach(id => el(id).addEventListener('input', applyGraphFields));
+
+function setPreset(p1,p2){
+  el('p1x').value = p1[0]; el('p1y').value = p1[1];
+  el('p2x').value = p2[0]; el('p2y').value = p2[1];
+  applyGraphFields();
+}
+el('presetLinear').addEventListener('click', ()=> setPreset([0,0],[1,1]));
+el('presetEase').addEventListener('click', ()=> setPreset([0.25,0.1],[0.25,1]));
+el('presetInOut').addEventListener('click', ()=> setPreset([0.42,0],[0.58,1]));
+el('presetBack').addEventListener('click', ()=> setPreset([0.68,-0.55],[0.27,1.55]));
+
+// ---- bezier graph SVG editor ----
+const bsvg = el('bezierSvg');
+const GDOM_MIN = -0.3, GDOM_MAX = 1.3, GDOM_SPAN = GDOM_MAX - GDOM_MIN;
+const SVG_PAD = 10, SVG_SIZE = 140;
+function gToPx(gx){ return SVG_PAD + (gx - GDOM_MIN)/GDOM_SPAN * SVG_SIZE; }
+function gToPy(gy){ return (SVG_PAD + SVG_SIZE) - (gy - GDOM_MIN)/GDOM_SPAN * SVG_SIZE; }
+function pxToG(px){ return GDOM_MIN + (px - SVG_PAD)/SVG_SIZE * GDOM_SPAN; }
+function pyToG(py){ return GDOM_MIN + ((SVG_PAD + SVG_SIZE) - py)/SVG_SIZE * GDOM_SPAN; }
+
+function drawBezierGraph(){
+  bsvg.innerHTML = '';
+  const ns = 'http://www.w3.org/2000/svg';
+  const zeroX = gToPx(0), oneX = gToPx(1), zeroY = gToPy(0), oneY = gToPy(1);
+
+  const frame = document.createElementNS(ns,'rect');
+  frame.setAttribute('x', zeroX); frame.setAttribute('y', oneY);
+  frame.setAttribute('width', oneX-zeroX); frame.setAttribute('height', zeroY-oneY);
+  frame.setAttribute('fill', 'none'); frame.setAttribute('stroke', '#3a3a3a');
+  bsvg.appendChild(frame);
+
+  if(!selectedSegment){
+    const txt = document.createElementNS(ns,'text');
+    txt.setAttribute('x', 80); txt.setAttribute('y', 80);
+    txt.setAttribute('fill', '#6f6b64'); txt.setAttribute('font-size', '9');
+    txt.setAttribute('text-anchor', 'middle');
+    txt.textContent = 'izaberi segment';
+    bsvg.appendChild(txt);
+    return;
+  }
+
+  const p1x = parseFloat(el('p1x').value), p1y = parseFloat(el('p1y').value);
+  const p2x = parseFloat(el('p2x').value), p2y = parseFloat(el('p2y').value);
+
+  const P0 = [gToPx(0), gToPy(0)];
+  const P1 = [gToPx(p1x), gToPy(p1y)];
+  const P2 = [gToPx(p2x), gToPy(p2y)];
+  const P3 = [gToPx(1), gToPy(1)];
+
+  const handleLine = document.createElementNS(ns,'path');
+  handleLine.setAttribute('d', `M${P0[0]},${P0[1]} L${P1[0]},${P1[1]} M${P3[0]},${P3[1]} L${P2[0]},${P2[1]}`);
+  handleLine.setAttribute('stroke', '#555'); handleLine.setAttribute('stroke-width','1'); handleLine.setAttribute('fill','none');
+  bsvg.appendChild(handleLine);
+
+  const curve = document.createElementNS(ns,'path');
+  curve.setAttribute('d', `M${P0[0]},${P0[1]} C${P1[0]},${P1[1]} ${P2[0]},${P2[1]} ${P3[0]},${P3[1]}`);
+  curve.setAttribute('stroke', 'var(--accent)'); curve.setAttribute('stroke-width','2'); curve.setAttribute('fill','none');
+  bsvg.appendChild(curve);
+
+  [P0,P3].forEach(p=>{
+    const c = document.createElementNS(ns,'circle');
+    c.setAttribute('cx',p[0]); c.setAttribute('cy',p[1]); c.setAttribute('r',2.5);
+    c.setAttribute('fill', '#666');
+    bsvg.appendChild(c);
+  });
+
+  function makeHandle(p, isP1){
+    const c = document.createElementNS(ns,'circle');
+    c.setAttribute('cx',p[0]); c.setAttribute('cy',p[1]); c.setAttribute('r',5);
+    c.setAttribute('fill', 'var(--accent)'); c.setAttribute('stroke', '#1a1109'); c.setAttribute('stroke-width','1');
+    c.style.cursor = 'grab';
+    c.addEventListener('pointerdown', (ev)=>{
+      ev.preventDefault();
+      c.setPointerCapture(ev.pointerId);
+      const move = (mv) => {
+        const rect = bsvg.getBoundingClientRect();
+        const scaleX = 160/rect.width, scaleY = 160/rect.height;
+        const px = (mv.clientX - rect.left) * scaleX;
+        const py = (mv.clientY - rect.top) * scaleY;
+        const gx = Math.min(1, Math.max(0, pxToG(px)));
+        const gy = pyToG(py);
+        if(isP1){ el('p1x').value = gx.toFixed(3); el('p1y').value = gy.toFixed(3); }
+        else { el('p2x').value = gx.toFixed(3); el('p2y').value = gy.toFixed(3); }
+        applyGraphFields();
+      };
+      const up = (uv) => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+    });
+    bsvg.appendChild(c);
+  }
+  makeHandle(P1, true);
+  makeHandle(P2, false);
+}
+
+renderKfList();
+
+
+
+// ---- animation state ----
+let startTime = performance.now();
+let playing = true;
+let manualTimeOffset = 0;
+
+function getElapsed(nowMs){
+  return (nowMs - startTime) / 1000;
+}
+
+function rotatePoint(x, y, z, angleX, angleY, angleZ){
+  // rotate around Y
+  let cosY = Math.cos(angleY), sinY = Math.sin(angleY);
+  let x1 = x*cosY + z*sinY;
+  let z1 = -x*sinY + z*cosY;
+  // rotate around X
+  let cosX = Math.cos(angleX), sinX = Math.sin(angleX);
+  let y1 = y*cosX - z1*sinX;
+  let z2 = y*sinX + z1*cosX;
+  // rotate around Z (roll, in screen plane)
+  let cosZ = Math.cos(angleZ), sinZ = Math.sin(angleZ);
+  let x2 = x1*cosZ - y1*sinZ;
+  let y2 = x1*sinZ + y1*cosZ;
+  return [x2, y2, z2];
+}
+
+function render(tSeconds){
+  const R = SIZE * 0.34;
+  const cx = SIZE/2, cy = SIZE/2;
+
+  const baseRotX = getParamValue('baseRotX', tSeconds) * Math.PI/180;
+  const baseRotY = getParamValue('baseRotY', tSeconds) * Math.PI/180;
+  const baseRotZ = getParamValue('baseRotZ', tSeconds) * Math.PI/180;
+  const rotYSpeed = parseFloat(el('rotY_num').value) * Math.PI/180;
+  const rotXSpeed = parseFloat(el('rotX_num').value) * Math.PI/180;
+  const rotZSpeed = parseFloat(el('rotZ_num').value) * Math.PI/180;
+
+  const wobbleAmp = getParamValue('wobbleAmp', tSeconds);
+  const wobbleSpeed = parseFloat(el('wobbleSpeed_num').value);
+  const twist = getParamValue('twist', tSeconds) * Math.PI/180;
+  const swirlDrift = parseFloat(el('swirlDrift_num').value) * Math.PI/180;
+  const twirlAngle = getParamValue('twirlAngle', tSeconds) * Math.PI/180;
+  const twirlSpeed = parseFloat(el('twirlSpeed_num').value) * Math.PI/180;
+  const backOpacity = getParamValue('backOpacity', tSeconds);
+  const dotSize = getParamValue('dotSize', tSeconds);
+  const color = dotColorEl.value;
+  const rc = parseInt(color.substr(1,2),16);
+  const gc = parseInt(color.substr(3,2),16);
+  const bc = parseInt(color.substr(5,2),16);
+
+  ctx.clearRect(0,0,SIZE,SIZE);
+  if(!bgTransparentEl.checked){
+    ctx.fillStyle = bgColorEl.value;
+    ctx.fillRect(0,0,SIZE,SIZE);
+  }
+
+  const angleY = baseRotY + rotYSpeed * tSeconds;
+  const angleX = baseRotX + rotXSpeed * tSeconds;
+  const angleZ = baseRotZ + rotZSpeed * tSeconds;
+
+  const render_list = [];
+
+  for(let k=0;k<dots.length;k++){
+    const d = dots[k];
+    let r = R;
+    if(wobbleAmp > 0){
+      r = R * (1 + wobbleAmp * Math.sin(tSeconds*wobbleSpeed + d.phase) * d.jitter);
+    }
+    const phiEff = d.phi + twist * d.ringNorm + swirlDrift * d.ringNorm * tSeconds;
+
+    const x = r * Math.cos(d.theta) * Math.cos(phiEff);
+    const y = r * Math.sin(d.theta);
+    const z = r * Math.cos(d.theta) * Math.sin(phiEff);
+
+    const [rx, ry, rz] = rotatePoint(x, y, z, angleX, angleY, angleZ);
+
+    const facing = rz / R;
+    let sx = cx + rx;
+    let sy = cy - ry;
+
+    // 2D twirl distortion: rotate around center, more at the edge than the center
+    if(twirlAngle !== 0 || twirlSpeed !== 0){
+      const ddx = sx - cx, ddy = sy - cy;
+      const dist = Math.sqrt(ddx*ddx + ddy*ddy) / R; // ~0 center .. ~1 edge
+      const a = twirlAngle * dist + twirlSpeed * dist * tSeconds;
+      const ca = Math.cos(a), sa = Math.sin(a);
+      sx = cx + ddx*ca - ddy*sa;
+      sy = cy + ddx*sa + ddy*ca;
+    }
+
+    let size, alpha;
+    if(rz >= 0){
+      size = Math.max(0.35, dotSize * Math.pow(facing, 0.85));
+      alpha = 0.18 + 0.82 * Math.pow(facing, 1.3);
+    } else {
+      if(backOpacity <= 0) continue;
+      size = Math.max(0.3, dotSize * 0.42 * Math.pow(-facing, 0.5));
+      alpha = backOpacity * (0.15 + 0.5 * Math.pow(-facing, 0.8));
+    }
+
+    render_list.push({sx, sy, size, alpha, rz});
+  }
+
+  render_list.sort((a,b)=> a.rz - b.rz);
+
+  for(const p of render_list){
+    ctx.beginPath();
+    ctx.fillStyle = `rgba(${rc},${gc},${bc},${p.alpha.toFixed(3)})`;
+    ctx.arc(p.sx, p.sy, p.size/2, 0, Math.PI*2);
+    ctx.fill();
+  }
+}
+
+function loop(now){
+  if(playing){
+    const t = getElapsed(now) + manualTimeOffset;
+    render(t);
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// ---- playback controls ----
+const playBtn = el('playBtn');
+playBtn.addEventListener('click', ()=>{
+  playing = !playing;
+  playBtn.textContent = playing ? 'Pauziraj' : 'Nastavi';
+});
+
+el('resetBtn').addEventListener('click', ()=>{
+  startTime = performance.now();
+  manualTimeOffset = 0;
+});
+
+el('autoLoopBtn').addEventListener('click', ()=>{
+  const speed = parseFloat(el('rotY_num').value);
+  if(Math.abs(speed) < 0.01){
+    setStatus('Postavi Spin (Y osa) brzinu razlicitu od 0 da izracunam loop trajanje.');
+    return;
+  }
+  const dur = Math.abs(360 / speed);
+  loopDurEl.value = dur.toFixed(2);
+  setStatus('Loop trajanje postavljeno na ' + dur.toFixed(2) + 's (jedan pun obrtaj).');
+});
+
+function setStatus(msg){
+  el('status').textContent = msg;
+}
+
+// ---- PNG sequence export ----
+el('exportPngBtn').addEventListener('click', async ()=>{
+  const dur = parseFloat(loopDurEl.value);
+  const fps = parseInt(fpsEl.value);
+  if(!dur || dur <= 0){ setStatus('Unesi validno trajanje loop-a.'); return; }
+
+  const totalFrames = Math.round(dur * fps);
+  const wasPlaying = playing;
+  playing = false;
+
+  const progressWrap = el('progressWrap');
+  const progressBar = el('progressBar');
+  progressWrap.style.display = 'block';
+  setStatus('Renderujem ' + totalFrames + ' frejmova...');
+
+  const zip = new JSZip();
+  const padLen = String(totalFrames).length;
+
+  for(let f=0; f<totalFrames; f++){
+    const t = (f/fps);
+    render(t);
+    const dataUrl = canvas.toDataURL('image/png');
+    const base64 = dataUrl.split(',')[1];
+    const name = 'frame_' + String(f).padStart(padLen,'0') + '.png';
+    zip.file(name, base64, {base64:true});
+
+    if(f % 5 === 0){
+      progressBar.style.width = Math.round((f/totalFrames)*100) + '%';
+      setStatus('Renderujem frejm ' + (f+1) + ' / ' + totalFrames);
+      await new Promise(r=>setTimeout(r,0));
+    }
+  }
+  progressBar.style.width = '100%';
+  setStatus('Pakujem ZIP...');
+
+  const blob = await zip.generateAsync({type:'blob'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'dot_sphere_frames.zip';
+  a.click();
+  URL.revokeObjectURL(url);
+
+  progressWrap.style.display = 'none';
+  setStatus('Gotovo — ' + totalFrames + ' PNG frejmova exportovano (' + fps + ' fps).');
+  playing = wasPlaying;
+});
+
+// ---- WebM export (experimental alpha) ----
+el('exportWebmBtn').addEventListener('click', async ()=>{
+  const dur = parseFloat(loopDurEl.value);
+  const fps = parseInt(fpsEl.value);
+  if(!dur || dur <= 0){ setStatus('Unesi validno trajanje loop-a.'); return; }
+
+  if(!window.MediaRecorder){
+    setStatus('MediaRecorder nije podrzan u ovom browseru.');
+    return;
+  }
+
+  const mimeCandidates = [
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm'
+  ];
+  let mime = mimeCandidates.find(m => MediaRecorder.isTypeSupported(m));
+  if(!mime){ setStatus('Nijedan WebM kodek nije podrzan.'); return; }
+
+  const wasPlaying = playing;
+  playing = false;
+
+  const stream = canvas.captureStream(fps);
+  const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 12000000 });
+  const chunks = [];
+  recorder.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data); };
+
+  const progressWrap = el('progressWrap');
+  const progressBar = el('progressBar');
+  progressWrap.style.display = 'block';
+  setStatus('Snimam WebM (' + mime + ')...');
+
+  recorder.start();
+
+  const totalFrames = Math.round(dur*fps);
+  for(let f=0; f<totalFrames; f++){
+    const t = f/fps;
+    render(t);
+    progressBar.style.width = Math.round((f/totalFrames)*100)+'%';
+    await new Promise(r=>setTimeout(r, 1000/fps));
+  }
+
+  recorder.stop();
+  await new Promise(r => recorder.onstop = r);
+
+  const blob = new Blob(chunks, {type:mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'dot_sphere.webm';
+  a.click();
+  URL.revokeObjectURL(url);
+
+  progressWrap.style.display = 'none';
+  setStatus('Gotovo — proveri alpha kanal u player/editoru koji ga podrzava.');
+  playing = wasPlaying;
+});
+</script>
+</body>
+</html>
