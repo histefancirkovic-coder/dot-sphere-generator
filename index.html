@@ -134,9 +134,17 @@
 
     <div class="group">
       <h2>Grid</h2>
-      <div class="row"><label>Prstenovi (rings)</label><input id="rings" type="range" min="10" max="90" value="46"><input class="val-input" id="rings_num" type="number" min="10" max="90" value="46"></div>
-      <div class="row"><label>Segmenti (kolone)</label><input id="segs" type="range" min="10" max="90" value="46"><input class="val-input" id="segs_num" type="number" min="10" max="90" value="46"></div>
-      <div class="row"><label>Velicina tacke</label><input id="dotSize" type="range" min="0.5" max="30" step="0.1" value="3.4"><input class="val-input" id="dotSize_num" type="number" min="0.5" max="60" step="0.1" value="3.4"></div>
+      <div class="row"><label>Raspored tacaka</label>
+        <select id="layoutMode" style="flex:1.6">
+          <option value="fibonacci" selected>Fibonacci spirala</option>
+          <option value="grid">UV Grid (redovi/kolone)</option>
+        </select>
+      </div>
+      <div class="hint" id="layoutHint">Fibonacci raspored (golden-angle) daje organske spiralne krake identicne referenci — bez potrebe za Twist efektom.</div>
+      <div class="row" id="rowNumPoints"><label>Broj tacaka</label><input id="numPoints" type="range" min="100" max="3000" step="10" value="900"><input class="val-input" id="numPoints_num" type="number" min="50" max="6000" value="900"></div>
+      <div class="row" id="rowRings" style="display:none"><label>Prstenovi (rings)</label><input id="rings" type="range" min="10" max="90" value="46"><input class="val-input" id="rings_num" type="number" min="10" max="90" value="46"></div>
+      <div class="row" id="rowSegs" style="display:none"><label>Segmenti (kolone)</label><input id="segs" type="range" min="10" max="90" value="46"><input class="val-input" id="segs_num" type="number" min="10" max="90" value="46"></div>
+      <div class="row"><label>Velicina tacke</label><input id="dotSize" type="range" min="0.5" max="30" step="0.1" value="5.5"><input class="val-input" id="dotSize_num" type="number" min="0.5" max="60" step="0.1" value="5.5"></div>
       <div class="row"><label>Boja tacki</label><input id="dotColor" type="color" value="#1a1a1a"></div>
       <div class="row"><label>Zadnja strana (providnost)</label><input id="backOpacity" type="range" min="0" max="1" step="0.01" value="0.15"><input class="val-input" id="backOpacity_num" type="number" min="0" max="1" step="0.01" value="0.15"></div>
       <div class="hint">Prikazuje sitne, skoro providne tackice sa druge strane sfere koje se naziru kroz prednju stranu (kao na referenci). Postavi na 0 da ih sakrijes potpuno.</div>
@@ -145,13 +153,13 @@
     <div class="group">
       <h2>Pozadina</h2>
       <div class="toggleRow"><input id="bgTransparent" type="checkbox" checked><label for="bgTransparent">Providna pozadina (za export)</label></div>
-      <div class="row"><label>Boja pozadine</label><input id="bgColor" type="color" value="#101010"></div>
+      <div class="row"><label>Boja pozadine</label><input id="bgColor" type="color" value="#faf8f4"></div>
       <div class="hint">Kad je "providna pozadina" cekirano, boja pozadine se koristi samo kao pregled u editoru, a export ostaje transparentan. Ako je iskljucis, boja se peca direktno u canvas i u export.</div>
     </div>
 
     <div class="group">
       <h2>Swirl (spiralni twist)</h2>
-      <div class="row"><label>Twist (pol-do-pol) &deg;</label><input id="twist" type="range" min="-720" max="720" value="260"><input class="val-input" id="twist_num" type="number" min="-720" max="720" value="260"></div>
+      <div class="row"><label>Twist (pol-do-pol) &deg;</label><input id="twist" type="range" min="-720" max="720" value="0"><input class="val-input" id="twist_num" type="number" min="-720" max="720" value="0"></div>
       <div class="row"><label>Swirl drift &deg;/s</label><input id="swirlDrift" type="range" min="-180" max="180" value="0"><input class="val-input" id="swirlDrift_num" type="number" min="-180" max="180" value="0"></div>
       <div class="hint">Twist uvija grid u spiralu (kao na referenci) — kruto se rotira sa sferom, ne kvari loop. Swirl drift dodaje nezavisno "curenje" spirale kroz vreme — vizuelno jako, ali za savrsen loop najbolje ostavi na 0 ili rucno podesi trajanje.</div>
     </div>
@@ -285,28 +293,64 @@ function pairSync(id, onChange){
   });
 }
 
-['rings','segs','dotSize','backOpacity','twist','swirlDrift','twirlAngle','twirlSpeed','baseRotX','baseRotY','baseRotZ','rotY','rotX','rotZ','wobbleAmp','wobbleSpeed'].forEach(id => pairSync(id));
+['rings','segs','numPoints','dotSize','backOpacity','twist','swirlDrift','twirlAngle','twirlSpeed','baseRotX','baseRotY','baseRotZ','rotY','rotX','rotZ','wobbleAmp','wobbleSpeed'].forEach(id => pairSync(id));
 
 pairSync('rings', buildDotsDeferred);
 pairSync('segs', buildDotsDeferred);
+pairSync('numPoints', buildDotsDeferred);
 
 function buildDotsDeferred(){
   clearTimeout(window.__buildTimer);
   window.__buildTimer = setTimeout(buildDots, 120);
 }
 
+const layoutModeEl = el('layoutMode');
+const rowNumPoints = el('rowNumPoints');
+const rowRings = el('rowRings');
+const rowSegs = el('rowSegs');
+const layoutHint = el('layoutHint');
+
+function updateLayoutUI(){
+  const isFib = layoutModeEl.value === 'fibonacci';
+  rowNumPoints.style.display = isFib ? 'flex' : 'none';
+  rowRings.style.display = isFib ? 'none' : 'flex';
+  rowSegs.style.display = isFib ? 'none' : 'flex';
+  layoutHint.textContent = isFib
+    ? 'Fibonacci raspored (golden-angle) daje organske spiralne krake identicne referenci — bez potrebe za Twist efektom.'
+    : 'Klasican geografski grid (redovi x kolone) — pravilan, dobar za Twist/Twirl efekte i pravilne prstenove.';
+}
+layoutModeEl.addEventListener('change', ()=>{ updateLayoutUI(); buildDotsDeferred(); });
+updateLayoutUI();
+
 let dots = []; // {theta, phi, ringNorm, phase, jitter}
 
 function buildDots(){
-  const rings = Math.max(2, parseInt(el('rings_num').value));
-  const segs = Math.max(3, parseInt(el('segs_num').value));
   dots = [];
-  for(let i=0;i<rings;i++){
-    const theta = -Math.PI/2 + Math.PI * i/(rings-1); // -90..90
-    const ringNorm = i/(rings-1) - 0.5; // -0.5..0.5, pole to pole
-    for(let j=0;j<segs;j++){
-      const phi = (2*Math.PI*j)/segs;
+  const mode = layoutModeEl.value;
+
+  if(mode === 'fibonacci'){
+    // Spherical Fibonacci lattice: equal-area, golden-angle spiral distribution.
+    // This naturally produces the pinwheel/spiral-arm look (no Twist needed).
+    const N = Math.max(50, parseInt(el('numPoints_num').value));
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // ~137.5 deg in radians
+    for(let i=0;i<N;i++){
+      const y = 1 - (i + 0.5) * (2/N); // 1..-1, pole to pole
+      const yc = Math.max(-1, Math.min(1, y));
+      const theta = Math.asin(yc); // -90..90 deg equivalent
+      const phi = (i * goldenAngle) % (Math.PI*2);
+      const ringNorm = yc/2; // -0.5..0.5, kept for compatibility with twist/swirl math
       dots.push({ theta, phi, ringNorm, phase: Math.random()*Math.PI*2, jitter: 0.85 + Math.random()*0.3 });
+    }
+  } else {
+    const rings = Math.max(2, parseInt(el('rings_num').value));
+    const segs = Math.max(3, parseInt(el('segs_num').value));
+    for(let i=0;i<rings;i++){
+      const theta = -Math.PI/2 + Math.PI * i/(rings-1); // -90..90
+      const ringNorm = i/(rings-1) - 0.5; // -0.5..0.5, pole to pole
+      for(let j=0;j<segs;j++){
+        const phi = (2*Math.PI*j)/segs;
+        dots.push({ theta, phi, ringNorm, phase: Math.random()*Math.PI*2, jitter: 0.85 + Math.random()*0.3 });
+      }
     }
   }
 }
@@ -602,7 +646,7 @@ function rotatePoint(x, y, z, angleX, angleY, angleZ){
 }
 
 function render(tSeconds){
-  const R = SIZE * 0.34;
+  const R = SIZE * 0.44;
   const cx = SIZE/2, cy = SIZE/2;
 
   const baseRotX = getParamValue('baseRotX', tSeconds) * Math.PI/180;
@@ -667,8 +711,8 @@ function render(tSeconds){
 
     let size, alpha;
     if(rz >= 0){
-      size = Math.max(0.35, dotSize * Math.pow(facing, 0.85));
-      alpha = 0.18 + 0.82 * Math.pow(facing, 1.3);
+      size = Math.max(0.35, dotSize * Math.pow(facing, 0.6));
+      alpha = 0.22 + 0.78 * Math.pow(facing, 1.4);
     } else {
       if(backOpacity <= 0) continue;
       size = Math.max(0.3, dotSize * 0.42 * Math.pow(-facing, 0.5));
